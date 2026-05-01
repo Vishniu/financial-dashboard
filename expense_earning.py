@@ -82,6 +82,10 @@ def analyze_statement(file_path):
     def get_category(desc):
         desc_upper = str(desc).upper()
         
+        # Ignore specific BIRLA SUNLIFE transactions from MF Income
+        if 'ICIN224142292815' in desc_upper or 'ICIN224142292814' in desc_upper or 'ICIN224444899507' in desc_upper:
+            return 'Other Transactions'
+        
         # Check Star Health (Income if CR, Premium/Expense if DR)
         if 'STAR HEALTH' in desc_upper:
             return 'Star Health Insurance'

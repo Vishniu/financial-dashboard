@@ -154,6 +154,11 @@ def load_and_process_data(file_path):
 
     def get_category(desc):
         desc_upper = str(desc).upper()
+        
+        # Ignore specific BIRLA SUNLIFE transactions from MF Income
+        if 'ICIN224142292815' in desc_upper or 'ICIN224142292814' in desc_upper or 'ICIN224444899507' in desc_upper:
+            return 'Other Transactions'
+            
         if 'STAR HEALTH' in desc_upper:
             return 'Star Health Insurance'
         if 'LIC INDIA D073' in desc_upper:
