@@ -63,37 +63,14 @@ st.markdown("Detailed breakdown of your Income, Expenses, Mutual Funds, and LIC 
 @st.cache_data
 def load_and_process_data(file_path):
     try:
-        df = pd.read_csv(file_path)
+        from statement_parser import parse_statement
+        df, err = parse_statement(file_path)
+        if err:
+            st.error(f"Failed to parse statement: {err}")
+            return None
     except Exception as e:
         st.error(f"Could not load data: {e}. If using a Google Sheet, ensure it is set to 'Anyone with the link can view'.")
         return None
-
-    # Clean column names just in case there's whitespace
-    df.columns = df.columns.str.strip()
-
-    amount_col = 'Amount'
-    dr_cr_col = df.columns[6] if len(df.columns) > 6 else 'Dr / Cr'
-    
-    if amount_col not in df.columns:
-        return None
-
-    df['Amount'] = df['Amount'].astype(str).str.replace(',', '').astype(float)
-    df['Transaction Type'] = df[dr_cr_col].astype(str).str.strip().str.upper()
-    
-    # Locate Date column dynamically
-    date_col = None
-    for col in df.columns:
-        if 'DATE' in col.upper():
-            date_col = col
-            break
-
-    # Parse dates to calculate total months
-    if date_col:
-        df['Transaction Date'] = pd.to_datetime(df[date_col], format='mixed', dayfirst=True, errors='coerce')
-        df['Month'] = df['Transaction Date'].dt.strftime('%Y-%m')
-        df['Month'] = df['Month'].fillna('Unknown')
-    else:
-        df['Month'] = 'Unknown'
 
     mf_mapping = {
         'AXIS MUTUAL FUND': 'Axis Mutual Fund',

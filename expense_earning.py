@@ -3,23 +3,14 @@ import sys
 
 def analyze_statement(file_path):
     try:
-        df = pd.read_csv(file_path)
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
+        from statement_parser import parse_statement
+        df, err = parse_statement(file_path)
+        if err:
+            print(f"Error parsing statement: {err}")
+            return
+    except Exception as e:
+        print(f"Error: {e}")
         return
-
-    # In this specific CSV, Amount is column index 5, and Dr / Cr is at index 6
-    # Let's dynamically find them just in case
-    amount_col = 'Amount'
-    dr_cr_col = df.columns[6] if len(df.columns) > 6 else 'Dr / Cr'
-    
-    if amount_col not in df.columns:
-        print(f"Error: Could not find '{amount_col}' column.")
-        return
-
-    # Clean amount and transaction type
-    df['Amount'] = df['Amount'].astype(str).str.replace(',', '').astype(float)
-    df['Transaction Type'] = df[dr_cr_col].astype(str).str.strip().str.upper()
 
     # Define Mutual Fund mappings
     mf_mapping = {
