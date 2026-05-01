@@ -200,20 +200,42 @@ def load_and_process_data(file_path):
     return df
 
 # --- Plug & Play Data Source ---
-st.sidebar.header("📁 Data Source")
-st.sidebar.markdown("Plug and play your financial statement:")
-data_source_link = st.sidebar.text_input("Google Sheets CSV Export Link", placeholder="https://docs.google.com/...")
-uploaded_file = st.sidebar.file_uploader("Or upload a local CSV file", type=["csv"])
+def fix_google_url(url):
+    """Automatically converts standard Google Sheet links to CSV export links."""
+    if "docs.google.com/spreadsheets" in url:
+        if "/export" not in url:
+            if "/edit" in url:
+                base = url.split("/edit")[0]
+                gid = ""
+                if "gid=" in url:
+                    gid = "&gid=" + url.split("gid=")[1].split("#")[0]
+                return f"{base}/export?format=csv{gid}"
+    return url
 
-# Load Data
-df = None
-if uploaded_file is not None:
-    df = load_and_process_data(uploaded_file)
-elif data_source_link:
-    df = load_and_process_data(data_source_link)
+st.sidebar.header("📁 Data Source")
+st.sidebar.markdown("Paste your Google Sheet link or upload a file:")
+link_input = st.sidebar.text_input("Google Sheets Link", placeholder="https://docs.google.com/spreadsheets/...")
+uploaded_file = st.sidebar.file_uploader("Or upload a local CSV file", type=["csv"])
+analyze_button = st.sidebar.button("🚀 Generate Full Report", use_container_width=True)
+
+# Use session state to keep data loaded after clicking button
+if analyze_button or 'current_df' in st.session_state:
+    if analyze_button:
+        # Reset state on new click
+        st.session_state.current_df = None
+        
+        if uploaded_file is not None:
+            st.session_state.current_df = load_and_process_data(uploaded_file)
+        elif link_input:
+            fixed_url = fix_google_url(link_input)
+            st.session_state.current_df = load_and_process_data(fixed_url)
+            
+    df = st.session_state.get('current_df')
+else:
+    df = None
 
 if df is None:
-    st.info("👈 Please drop your Google Sheets CSV link or upload a CSV file in the sidebar to securely generate your dashboard!")
+    st.info("👈 Paste your Google Sheets link and click **'Generate Full Report'** to begin!")
     st.stop()
 
 # Calculate date span
