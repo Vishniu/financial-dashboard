@@ -129,9 +129,25 @@ def load_and_process_data(file_path):
         'UTI MUTUAL': 'UTI Mutual Fund',
     }
 
-    def get_category(desc):
+    def get_category(desc, trans_type):
         desc_upper = str(desc).upper()
         
+        # --- Specialized Categories (Highest Priority) ---
+        if 'IBM' in desc_upper and 'SALARY' in desc_upper and trans_type == 'CR':
+            return '💰 Salary: IBM'
+        if 'LATTICE' in desc_upper and trans_type == 'CR':
+            return '💰 Salary: Lattice Semi'
+        if ('DIVIDEND' in desc_upper or ' DIV ' in desc_upper) and trans_type == 'CR':
+            return '💵 Dividends'
+        if 'ZERODHA' in desc_upper:
+            return '📈 Investment: Zerodha'
+        if 'CANARA' in desc_upper and trans_type == 'DR':
+            return '🏦 Transfer: Canara Bank'
+        if 'CENTRAL BANK' in desc_upper and trans_type == 'DR':
+            return '🏦 Transfer: Central Bank'
+        if ('BOND' in desc_upper or 'SGB' in desc_upper or 'SOVEREIGN' in desc_upper) and trans_type == 'DR':
+            return '📜 Investment: Bonds / SGB'
+
         # Ignore specific BIRLA SUNLIFE transactions from MF Income
         if 'ICIN224142292815' in desc_upper or 'ICIN224142292814' in desc_upper or 'ICIN224444899507' in desc_upper:
             return 'Other Transactions'
@@ -178,7 +194,7 @@ def load_and_process_data(file_path):
             
         return 'Other Transactions'
 
-    df['Category'] = df['Description'].apply(get_category)
+    df['Category'] = df.apply(lambda x: get_category(x['Description'], x['Transaction Type']), axis=1)
     return df
 
 # --- Plug & Play Data Source ---
@@ -273,7 +289,7 @@ with col3:
 st.markdown("---")
 
 # --- Visualizations ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏛️ Mutual Fund Breakdown", "🛡️ LIC & Star Health", "💸 Spending Breakdown", "📅 MoM Trend", "📈 Full Statement View"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🏛️ Mutual Fund Breakdown", "🛡️ LIC & Star Health", "💸 Spending Breakdown", "📅 MoM Trend", "🔍 Deep Dive Analysis", "💡 Wealth Insights", "📈 Full Statement View"])
 
 with tab1:
     st.subheader("Mutual Fund House Breakdown")
@@ -399,6 +415,116 @@ with tab4:
         st.info("Not enough date information found to calculate Month-on-Month trends.")
 
 with tab5:
+    st.subheader("🔍 Deep Dive: Salary, Dividends & Specific Transfers")
+    
+    deep_dive_categories = [
+        '💰 Salary: IBM', '💰 Salary: Lattice Semi', '💵 Dividends', 
+        '📈 Investment: Zerodha', '🏦 Transfer: Canara Bank', 
+        '🏦 Transfer: Central Bank', '📜 Investment: Bonds / SGB'
+    ]
+    
+    deep_dive_df = summary[summary['Category'].isin(deep_dive_categories)].copy()
+    
+    if deep_dive_df.empty:
+        st.info("No transactions found for the specialized categories (Salary, Zerodha, Bank Transfers, etc.).")
+    else:
+        # Key Metrics for Deep Dive
+        col1, col2, col3 = st.columns(3)
+        
+        salary_sum = deep_dive_df[deep_dive_df['Category'].str.contains('Salary')]['Income (CR)'].sum()
+        div_sum = deep_dive_df[deep_dive_df['Category'] == '💵 Dividends']['Income (CR)'].sum()
+        zerodha_sum = deep_dive_df[deep_dive_df['Category'] == '📈 Investment: Zerodha']['Expense/Investment (DR)'].sum()
+        
+        with col1:
+            st.metric("Total Salary", f"₹ {salary_sum:,.2f}")
+        with col2:
+            st.metric("Total Dividends", f"₹ {div_sum:,.2f}")
+        with col3:
+            st.metric("Zerodha Transfers", f"₹ {zerodha_sum:,.2f}")
+            
+        st.markdown("---")
+        
+        # Chart for Deep Dive
+        deep_chart_data = deep_dive_df.melt(id_vars=['Category'], value_vars=['Income (CR)', 'Expense/Investment (DR)'], var_name='Type', value_name='Amount')
+        deep_chart_data = deep_chart_data[deep_chart_data['Amount'] > 0]
+        
+        deep_bar = alt.Chart(deep_chart_data).mark_bar().encode(
+            x=alt.X('Amount:Q', title='Amount (₹)'),
+            y=alt.Y('Category:N', sort='-x', title='Category'),
+            color=alt.Color('Type:N', scale=alt.Scale(range=['#4ade80', '#f87171'])),
+            tooltip=['Category', 'Type', alt.Tooltip('Amount:Q', format=',.2f')]
+        ).properties(height=350, title="Breakdown of Key Movements").interactive()
+        
+        st.altair_chart(deep_bar, width='stretch')
+        
+        st.dataframe(deep_dive_df[['Category', 'Income (CR)', 'Expense/Investment (DR)']].style.format({
+            "Income (CR)": "₹ {:,.2f}", 
+            "Expense/Investment (DR)": "₹ {:,.2f}"
+        }), hide_index=True, width='stretch')
+
+with tab6:
+    st.subheader("💡 Wealth & Spending Insights")
+    
+    # Define Investment vs Spending
+    investment_keywords = ['MF:', 'Investment', 'Bond', 'SGB', 'Pension', 'Chit', 'Zerodha']
+    
+    def is_investment(cat):
+        return any(ik in cat for ik in investment_keywords)
+    
+    # Filter for DR (Outflows)
+    outflow_df = summary[summary['Expense/Investment (DR)'] > 0].copy()
+    outflow_df['Type'] = outflow_df['Category'].apply(lambda x: 'Investment' if is_investment(x) else 'Spending')
+    
+    total_outflow = outflow_df['Expense/Investment (DR)'].sum()
+    inv_outflow = outflow_df[outflow_df['Type'] == 'Investment']['Expense/Investment (DR)'].sum()
+    spend_outflow = outflow_df[outflow_df['Type'] == 'Spending']['Expense/Investment (DR)'].sum()
+    
+    inv_rate = (inv_outflow / total_outflow * 100) if total_outflow > 0 else 0
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Investment Rate</div>
+            <div class='metric-value investment'>{inv_rate:.1f}%</div>
+            <div style='color: #a0aab2; font-size: 14px;'>of total outflows</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-label'>Investment vs Spending</div>
+            <div style='display: flex; justify-content: space-around; margin-top: 10px;'>
+                <div><span style='color: #60a5fa; font-weight: bold;'>₹ {inv_outflow:,.0f}</span><br/><span style='color: #a0aab2; font-size: 12px;'>Invested</span></div>
+                <div><span style='color: #f87171; font-weight: bold;'>₹ {spend_outflow:,.0f}</span><br/><span style='color: #a0aab2; font-size: 12px;'>Spent</span></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        # Pie chart of Allocation
+        alloc_data = outflow_df.groupby('Type')['Expense/Investment (DR)'].sum().reset_index()
+        pie_alloc = alt.Chart(alloc_data).mark_arc(innerRadius=60).encode(
+            theta=alt.Theta(field="Expense/Investment (DR)", type="quantitative"),
+            color=alt.Color(field="Type", type="nominal", scale=alt.Scale(domain=['Investment', 'Spending'], range=['#60a5fa', '#f87171'])),
+            tooltip=['Type', alt.Tooltip('Expense/Investment (DR):Q', format=',.2f')]
+        ).properties(title="Overall Capital Allocation", height=400)
+        st.altair_chart(pie_alloc, width='stretch')
+        
+    with c2:
+        # Top Investments
+        st.write("### 🔝 Top Investment Avenues")
+        top_inv = outflow_df[outflow_df['Type'] == 'Investment'].sort_values(by='Expense/Investment (DR)', ascending=False).head(10)
+        st.dataframe(top_inv[['Category', 'Expense/Investment (DR)']].style.format({"Expense/Investment (DR)": "₹ {:,.2f}"}), hide_index=True, width='stretch')
+
+    st.write("### 💸 Top Spending Categories")
+    top_spend = outflow_df[outflow_df['Type'] == 'Spending'].sort_values(by='Expense/Investment (DR)', ascending=False).head(10)
+    st.dataframe(top_spend[['Category', 'Expense/Investment (DR)']].style.format({"Expense/Investment (DR)": "₹ {:,.2f}"}), hide_index=True, width='stretch')
+
+with tab7:
     st.subheader("Complete Aggregated Statement")
     
     # Sort to show largest incomes and expenses
